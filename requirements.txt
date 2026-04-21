@@ -1,0 +1,20 @@
+async-timeout==5.0.1
+asyncio==4.0.0
+bleak==1.1.1
+certifi==2026.2.25
+cffi==2.0.0
+charset-normalizer==3.4.7
+cryptography==46.0.7
+idna==3.12
+idotmatrix==0.0.9
+iDotMatrix-Client @ file:///Users/jandelrodriguez/python3-idotmatrix-client
+numpy==2.0.2
+pillow==11.3.0
+pycparser==2.23
+pyobjc-core==11.1
+pyobjc-framework-Cocoa==11.1
+pyobjc-framework-CoreBluetooth==11.1
+pyobjc-framework-libdispatch==11.1
+requests==2.32.5
+typing_extensions==4.15.0
+urllib3==2.6.3

@@ -41,9 +41,18 @@ DAY_IMAGES = {
 }
 
 NIGHT_IMAGES = {
-    0: "moon.png",              # Clear sky (night)
-    1: "cloud_moon.png",        # Partly cloudy (night)
-    61: "rain_moon.png",        # Light rain (night)
+    0: "moon.png",           # Clear sky
+    1: "cloud_moon.png",     # Partly cloudy
+    2: "cloud_moon.png",     # Cloudy
+    3: "cloud_moon.png",     # Overcast
+    45: "cloud_wind.png",    # Fog
+    48: "cloud_wind.png",    # Freezing fog
+    51: "rain_moon.png",     # Drizzle
+    61: "rain_moon.png",     # Light rain
+    63: "rain_moon.png",     # Moderate rain
+    65: "rain_moon.png",     # Heavy rain
+    71: "snow.png",          # Snow
+    95: "lightning.png",     # Thunderstorm
 }
 
 def fetch_weather():
@@ -56,9 +65,12 @@ def fetch_weather():
     try:
         current_weather = data["current_weather"]
         weather_code = current_weather["weathercode"]
-        temperature = int(current_weather["temperature"])
+        temperature = int(current_weather["temperature"] * 9/5 + 32)
         is_day = bool(current_weather["is_day"])
-        return weather_code, temperature, is_day
+        rain_prob = data["hourly"]["precipitation_probability"][0]
+        sunrise = data["daily"]["sunrise"][0].split("T")[1]
+        sunset = data["daily"]["sunset"][0].split("T")[1]
+        return weather_code, temperature, is_day, rain_prob, sunrise, sunset
     except KeyError as e:
         print(f"Error parsing weather data: {e}")
         print(f"API Response: {data}")
@@ -85,7 +97,7 @@ def get_colour_for_temperature(temperature):
     else:
         return (153, 0, 0, 255)  # Dark Red for extreme heat
 
-def render_text_frame(text, colour, canvas_size=(16, 16)):
+def render_text_frame(text, colour, canvas_size=(32, 32)):
     """Manually render text as pixel data with colour coding, centered horizontally."""
     print(f"Rendering text: {text} with colour {colour}")
     frame = Image.new("RGBA", canvas_size, (0, 0, 0, 255))  # Black background
@@ -203,6 +215,36 @@ def render_text_frame(text, colour, canvas_size=(16, 16)):
             "0000",
             "0000",
         ],
+        "o": [
+            "0110",
+            "1001",
+            "1001",
+            "0110",
+            "0000",
+            "0000",
+            "0000",
+            "0000",
+        ],
+        "F": [
+            "1111",
+            "1000",
+            "1110",
+            "1000",
+            "1000",
+            "1000",
+            "1000",
+            "0000",
+        ],
+        "%": [
+            "1100",
+            "1101",
+            "0010",
+            "0100",
+            "1011",
+            "0011",
+            "0000",
+            "0000",
+        ],
     }
 
     # Calculate total text width
@@ -212,6 +254,7 @@ def render_text_frame(text, colour, canvas_size=(16, 16)):
 
     # Adjust initial x_offset for centering
     x_offset = (canvas_size[0] - total_width) // 2
+    y_offset = (canvas_size[1] - 8) // 2
 
     # Render each character
     for char in text:
@@ -221,7 +264,7 @@ def render_text_frame(text, colour, canvas_size=(16, 16)):
                 for x, bit in enumerate(row):
                     if bit == "1":
                         # Place pixel with the given colour
-                        pixels[x + x_offset, y + 4] = colour
+                        pixels[x + x_offset, y + y_offset] = colour
             x_offset += char_width + spacing  # Shift to the next character
 
     # Save for debugging
@@ -230,37 +273,58 @@ def render_text_frame(text, colour, canvas_size=(16, 16)):
     print(f"Rendered text frame saved as: {frame_path}")
 
     return frame
+
+def render_sun_time_frame(time_str, icon_file, canvas_size=(32, 32)):
+    """Render a frame with sun/moon icon on top and time on bottom."""
+    frame = Image.new("RGBA", canvas_size, (0, 0, 0, 255))
     
-def generate_frames(weather_code, temperature, is_day):
+    # Load and resize icon to top half
+    icon_path = os.path.join(IMAGE_PATH, icon_file)
+    icon = Image.open(icon_path).resize((16, 16)).convert("RGBA")
+    frame.paste(icon, (8, 0), icon)
+    
+    # Render time on bottom half (strip the colon, show as HHMM)
+    hour, minute = time_str.split(":")
+    text = hour + minute
+    text_frame = render_text_frame(text, (255, 200, 0, 255), canvas_size=(32, 16))
+    frame.paste(text_frame, (0, 16))
+    
+    return frame
+
+def generate_frames(weather_code, temperature, is_day, rain_prob, sunrise, sunset):
     """Generate frames for the weather display."""
     images = DAY_IMAGES if is_day else NIGHT_IMAGES
     icon_file = images.get(weather_code, "unknown.png")
     icon_path = os.path.join(IMAGE_PATH, icon_file)
 
     if os.path.exists(icon_path):
-        icon_frame = Image.open(icon_path).resize((16, 16))
+        icon_frame = Image.open(icon_path).resize((32, 32))
         icon_frame.save(os.path.join(DEBUG_PATH, "debug_icon_frame.png"))
         print(f"Icon frame saved as ./debug/debug_icon_frame.png")
     else:
-        icon_frame = Image.new("RGBA", (16, 16), (0, 0, 0, 255))  # Fallback black frame
+        icon_frame = Image.new("RGBA", (32, 32), (0, 0, 0, 255))  # Fallback black frame
 
     colour = get_colour_for_temperature(temperature)
-    temperature_frame = render_text_frame(str(temperature), colour)
+    temperature_frame = render_text_frame(str(temperature) + "oF", colour)
 
+    rain_frame = render_text_frame(str(rain_prob) + "%", (0, 150, 255, 255))
+    sunrise_frame = render_sun_time_frame(sunrise, "sunv2.png")
+    sunset_frame = render_sun_time_frame(sunset, "moon.png")
     gif_path = os.path.join(DEBUG_PATH, "weather_display.gif")
     icon_frame.save(
         gif_path,
         save_all=True,
-        append_images=[temperature_frame],
+        append_images=[temperature_frame, rain_frame, sunrise_frame, sunset_frame],
         duration=FRAME_DURATION,
         loop=0,
     )
+    
     print(f"Saved GIF to {gif_path}")
     return gif_path
 
 def send_to_display(gif_path):
     """Send the generated GIF to the display."""
-    cmd = f"{SCRIPT_PATH} --address {DEVICE_ADDRESS} --set-gif {gif_path} --process-gif 16"
+    cmd = f"{SCRIPT_PATH} --address {DEVICE_ADDRESS} --set-gif {gif_path} --process-gif 32"
     print(f"Executing: {cmd}")
     os.system(cmd)
 
@@ -269,8 +333,8 @@ def main():
     print("Starting weather display script...")
     while True:
         try:
-            weather_code, temperature, is_day = fetch_weather()
-            gif_path = generate_frames(weather_code, temperature, is_day)
+            weather_code, temperature, is_day, rain_prob, sunrise, sunset = fetch_weather()
+            gif_path = generate_frames(weather_code, temperature, is_day, rain_prob, sunrise, sunset)
             send_to_display(gif_path)
         except Exception as e:
             print(f"An error occurred: {e}")
